@@ -30,10 +30,7 @@
             android:id="@+id/btnStart"
             android:layout_marginTop="10dp"
             android:onClick="btnStartClick"/>
-        <TextView
-            android:layout_width="fill_parent"
-            android:layout_height="40px"
-            android:id="@+id/textviewBeats"/>
+
     <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
         android:orientation="horizontal"
         android:layout_width="fill_parent"

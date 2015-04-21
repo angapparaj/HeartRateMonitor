@@ -143,7 +143,7 @@ sampling frequency: 15 Hz
     private SimpleXYSeries demeanedDataSeries = null;
 
     private TextView textviewBeats;
-
+private Button btnStart;
 
     int currentWindow = 0;
     float[] windowValues = new float[NUM_TAPS+FFT_SIZE];
@@ -179,8 +179,10 @@ sampling frequency: 15 Hz
         circularProgressbar.setTitle("00");
         circularProgressbar.setSubTitle("Ready");
         circularProgressbar.setProgress(0);
+        circularProgressbar.setSubTitleColor(Color.RED);
+        circularProgressbar.setTitleColor(Color.GREEN);
 
-        textviewBeats = (TextView) findViewById(R.id.textviewBeats);
+        btnStart = (Button) findViewById(R.id.btnStart);
 
         // setup the camera plot:
         cameraHistoryPlot = (XYPlot) findViewById(R.id.cameraHistoryPlot);
@@ -284,13 +286,18 @@ sampling frequency: 15 Hz
             circularProgressbar.setTitle("00");
             circularProgressbar.setSubTitle("Ready");
             circularProgressbar.setProgress(0);
-            button.setText("Start");
-            measuring = false;
+            PauseMeasurement();
         }
         else {
             button.setText("Cancel");
             measuring = true;
         }
+    }
+
+    private void PauseMeasurement()
+    {
+        btnStart.setText("Start");
+        measuring = false;
     }
 
     private int beats = 0;
@@ -504,9 +511,9 @@ sampling frequency: 15 Hz
                     textviewBeats.setText(Integer.toString(beats));
                     circularProgressbar.setTitle(Integer.toString(beats));
                     circularProgressbar.setSubTitle("bpm");
+                    PauseMeasurement();
                 }
             });
-
 
             // Display the calculated FFT on the chart
             int size = rawFftData.size();
