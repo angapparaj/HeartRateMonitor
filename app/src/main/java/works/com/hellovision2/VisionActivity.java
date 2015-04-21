@@ -8,6 +8,7 @@ import android.view.Menu;
 import android.view.MenuItem;
 import android.view.MotionEvent;
 import android.view.SurfaceView;
+import android.view.View;
 import android.view.WindowManager;
 import android.widget.Button;
 import android.widget.TextView;
@@ -166,12 +167,18 @@ sampling frequency: 15 Hz
         }
     };
 
+    CircularProgressBar circularProgressbar;
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         Log.d(TAG, "called onCreate");
         super.onCreate(savedInstanceState);
 
         setContentView(R.layout.activity_vision);
+
+        circularProgressbar = (CircularProgressBar) findViewById(R.id.circularprogressbar1);
+        circularProgressbar.setTitle("00");
+        circularProgressbar.setSubTitle("Ready");
+        circularProgressbar.setProgress(0);
 
         textviewBeats = (TextView) findViewById(R.id.textviewBeats);
 
@@ -269,7 +276,25 @@ sampling frequency: 15 Hz
 
     }
 
+    public void btnStartClick(View view)
+    {
+        Button button = (Button)view;
+        if(measuring)
+        {
+            circularProgressbar.setTitle("00");
+            circularProgressbar.setSubTitle("Ready");
+            circularProgressbar.setProgress(0);
+            button.setText("Start");
+            measuring = false;
+        }
+        else {
+            button.setText("Cancel");
+            measuring = true;
+        }
+    }
+
     private int beats = 0;
+    private boolean measuring = false;
 
     // Function to apply band pass filter on input signal
     // Returns the filtered signal values
@@ -333,7 +358,13 @@ sampling frequency: 15 Hz
 
     @Override
     public Mat onCameraFrame(CameraBridgeViewBase.CvCameraViewFrame inputFrame) {
+
         Mat currentFrame = inputFrame.rgba();
+
+        if(!measuring)
+        {
+            return currentFrame;
+        }
 
         // check image size returned from camera
         int cols = currentFrame.cols();
@@ -383,6 +414,20 @@ sampling frequency: 15 Hz
 
         // Add the measure intensity to our window values array as well
         windowValues[currentWindow] = avgIntensity;
+
+
+        // Update progress
+
+        runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                circularProgressbar.setTitle("00");
+                circularProgressbar.setSubTitle("Detecting...");
+                //circularProgressbar.setProgress(currentWindow);
+                circularProgressbar.setProgress(((currentWindow*100)/(FFT_SIZE+NUM_TAPS)));
+            }
+        });
+
 
         // Window handling code that processes data in windows
         if(currentWindow == 0)
@@ -457,6 +502,8 @@ sampling frequency: 15 Hz
                 @Override
                 public void run() {
                     textviewBeats.setText(Integer.toString(beats));
+                    circularProgressbar.setTitle(Integer.toString(beats));
+                    circularProgressbar.setSubTitle("bpm");
                 }
             });
 
