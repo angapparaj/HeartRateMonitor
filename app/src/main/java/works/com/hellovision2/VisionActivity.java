@@ -137,12 +137,17 @@ sampling frequency: 15 Hz
     private XYPlot fftPlot = null;
 
     private SimpleXYSeries rawFftData = null;
-
     private SimpleXYSeries rawDataSeries = null;
     private SimpleXYSeries smoothedDataSeries = null;
     private SimpleXYSeries demeanedDataSeries = null;
 
     private TextView textviewBeats;
+
+
+    int currentWindow = 0;
+    float[] windowValues = new float[NUM_TAPS+FFT_SIZE];
+    long windowStart = 0;
+    long windowEnd = 0;
 
     private BaseLoaderCallback mLoaderCallback = new BaseLoaderCallback(this) {
         @Override
@@ -170,7 +175,7 @@ sampling frequency: 15 Hz
 
         textviewBeats = (TextView) findViewById(R.id.textviewBeats);
 
-        // setup the accelerometer plot:
+        // setup the camera plot:
         cameraHistoryPlot = (XYPlot) findViewById(R.id.cameraHistoryPlot);
 
         rawDataSeries = new SimpleXYSeries("Raw Signal");
@@ -180,6 +185,7 @@ sampling frequency: 15 Hz
         demeanedDataSeries = new SimpleXYSeries("Demeaned Signal");
         demeanedDataSeries.useImplicitXVals();
 
+        // Camera plot, y axis is intensity, goes upto 255 max, X axis is time
         cameraHistoryPlot.setRangeBoundaries(-10, 255, BoundaryMode.FIXED);
         cameraHistoryPlot.setDomainBoundaries(0, 500, BoundaryMode.FIXED);
 
@@ -188,7 +194,7 @@ sampling frequency: 15 Hz
         cameraHistoryPlot.addSeries(demeanedDataSeries, new LineAndPointFormatter(Color.rgb(200, 100, 100), null, null,null));
         cameraHistoryPlot.setDomainStepValue(5);
         cameraHistoryPlot.setTicksPerRangeLabel(3);
-        cameraHistoryPlot.setDomainLabel("Acceleration");
+        cameraHistoryPlot.setDomainLabel("Intensity");
         cameraHistoryPlot.getDomainLabelWidget().pack();
         cameraHistoryPlot.setRangeLabel("Time)");
         cameraHistoryPlot.getRangeLabelWidget().pack();
@@ -262,12 +268,11 @@ sampling frequency: 15 Hz
     public void onCameraViewStopped() {
 
     }
-//
 
-    private int peak = 0;
     private int beats = 0;
 
-
+    // Function to apply band pass filter on input signal
+    // Returns the filtered signal values
     private float[] applyBandPassFilter(float[] signal)
     {
         float [] output = new float[signal.length];
@@ -281,146 +286,158 @@ sampling frequency: 15 Hz
             }
             int index = i;
             int convolution = 0;
+
+            // Apply band pass filter by using convolution
             while(convolution < convolutionLimit)
             {
                 output[i] += signal[index] * filter_taps[convolution];
                 convolution++;
                 index --;
             }
-
         }
-
         return output;
     }
 
+    // Calculates FFT for an input signal
     private float[] calculateFFT(float [] signal, float frequency)
     {
-        FFT fft1 = new FFT(256,frequency);
+        FFT fft1 = new FFT(FFT_SIZE,frequency);
 
-        float [] localInput = new float[256];
+        float [] localSignal = new float[FFT_SIZE];
+
         // Zero Pad signal
         for (int i = 0; i < FFT_SIZE; i++) {
 
             if (i < signal.length) {
-                localInput[i] = signal[i];
+                localSignal[i] = signal[i];
             } else {
-                localInput[i] = 0;
+                localSignal[i] = 0;
             }
         }
 
-        fft1.forward(localInput);
+        fft1.forward(localSignal);
 
-       // float[] fft_cpx = fft1.getSpectrum();
         float[] imag = fft1.getImaginaryPart();
         float[] real = fft1.getRealPart();
 
         float[] mag = new float[FFT_SIZE];
 
-        int highestFrequency = 0;
-        float highestVal =0;
         for (int i = 0; i < FFT_SIZE; i++) {
-
-            float val = (float)Math.sqrt((real[i] * real[i]) + (imag[i] * imag[i]));
-mag[i] = val;
-
+            mag[i] = (float)Math.sqrt((real[i] * real[i]) + (imag[i] * imag[i]));
         }
 
-        // ignore dc
+        // Set this to 0 to ignore DC noise from FFT output
         mag[0] =0;
-
-        // find the highest value
-
-
         return mag;
     }
-
-    Calendar c = Calendar.getInstance();
-
-    //float [] rawSignal = new float[256];
-    int currentWindow = 0;
-    int runningSum = 0;
-    float[] windowValues = new float[NUM_TAPS+FFT_SIZE];
-    long windowStart = 0;
-    long windowEnd = 0;
 
     @Override
     public Mat onCameraFrame(CameraBridgeViewBase.CvCameraViewFrame inputFrame) {
         Mat currentFrame = inputFrame.rgba();
-//        Core.mean(currentFrame); -> returns x,y,z,a
-        Mat gryFrame = new Mat();
 
-
-        // check image size
+        // check image size returned from camera
         int cols = currentFrame.cols();
         int rows = currentFrame.rows();
 
+        // Pick the center of image, this is where we take pixel values to detect intensity
         int centerCol = cols/2;
         int centerRow = rows/2;
 
         int avgIntensity = 0;
+        int sumOfAvgIntensity = 0;
         int pixelCount = 0;
+
+        // Calculate average intensity over 40x40 area from center of the image
         for(int row=centerRow-20; row<centerRow+20; row++)
         {
             for(int col=centerCol-20; col<centerCol+20; col++)
             {
                 double [] val = currentFrame.get(row,col);
-                avgIntensity+=((val[0]+val[1]+val[2])/3);
+                sumOfAvgIntensity+=((val[0]+val[1]+val[2])/3);
                 pixelCount++;
             }
-        }// get rid the oldest sample in history:
+        }
+
+        avgIntensity = sumOfAvgIntensity/pixelCount;
+
+        // We have the average intensity value detected from this image
+        // Now we add it to the raw data series
+
+        // First make sure we make enough room in both raw data and filtered data series
+
+        // We add one item at a time in raw data, so just delete last one
         if (rawDataSeries.size() > HISTORY_SIZE) {
             rawDataSeries.removeFirst();
         }
 
+        // Filtered data is added in batches of (fft size + num taps) so we do batch delete here.
         while(smoothedDataSeries.size()>HISTORY_SIZE) {
             smoothedDataSeries.removeFirst();
         }
-        rawDataSeries.addLast(null, avgIntensity/pixelCount);
 
+        // Now add the detected intensity to raw data.
+        rawDataSeries.addLast(null, avgIntensity);
 
+        // Redraw the camera plot to refresh the data
         cameraHistoryPlot.redraw();
 
-        windowValues[currentWindow] = avgIntensity/pixelCount;
+        // Add the measure intensity to our window values array as well
+        windowValues[currentWindow] = avgIntensity;
+
+        // Window handling code that processes data in windows
         if(currentWindow == 0)
         {
-
-
+            // We just started a new measuring window
+            // Keep track of start time to calculate FPS.
             windowStart = System.currentTimeMillis();
         }
+
         currentWindow++;
+
+        // The next block is executed every time we exceed the window size
+        // This mean we have a complete window of data that needs to be processed
+        // Window size is size of fft + num taps. This is because we ignore the first set of values
+        // upto num taps since they are partial due to filtering.
         if(currentWindow>=NUM_TAPS+FFT_SIZE)
         {
+            // Reset window back to 0
+            currentWindow = 0;
+
+            // Set the window end time for FPS calculation
             windowEnd = System.currentTimeMillis();
             long windowDurationInMillis = windowEnd - windowStart;
+
+            // Calculate the FPS
             float cameraFrequency = (NUM_TAPS+FFT_SIZE) / (windowDurationInMillis / 1000);
 
             // Send the signal through band pass filter
             windowValues = applyBandPassFilter(windowValues);
 
-            float [] filteredValues = new float[FFT_SIZE];
-
-            // add filterd values to chart
+            // add filtered values to chart
+            // The 0th to num taps value is added only to smoothed data chart for display
+            // We drop these values from FFT calculation to maintain accuracy
             for(int i = 0 ; i<NUM_TAPS; i++)
             {
                 smoothedDataSeries.addLast(null,0);
             }
 
-
+            // This var stores the accurate filtered values only of FFT size, so we dont add the intial values from filtering here.
+            float [] filteredValues = new float[FFT_SIZE];
             for(int i=NUM_TAPS; i<NUM_TAPS+FFT_SIZE; i++)
             {
                 smoothedDataSeries.addLast(null,windowValues[i]);
                 filteredValues[i-NUM_TAPS] = windowValues[i];
             }
 
-            // calculate fft
+            // Now calculate the FFT using the filtered data that we obtained in last step
             float [] fft = calculateFFT(filteredValues, cameraFrequency);
-            //rawFftData =  new SimpleXYSeries("FFT");
-           // rawFftData.useImplicitXVals();
 
-            //
             int highestFrequency = 0;
             float highestVal =0;
-            for (int i = 0; i < FFT_SIZE; i++) {
+
+            // Check the first half of the FFT and pick the frequency value with highest amplitude
+            // This should be the pulse rate frequency
+            for (int i = 0; i < FFT_SIZE/2; i++) {
 
                 if(i > 0 && fft[i]>highestVal)
                 {
@@ -429,24 +446,22 @@ mag[i] = val;
                 }
             }
 
-            // Calculate mapping back to hz
+            // Calculate the mapping off FFT index back to hz
             float hz = (float)(highestFrequency * (cameraFrequency/2)) / 128;
 
-            peak = highestFrequency;
+            // Calculate beats per second from the hertz value.
             beats = (int)(hz*60);
 
-
+            // Update the UI to diplay the detected beats
             runOnUiThread(new Runnable() {
                 @Override
                 public void run() {
-
                     textviewBeats.setText(Integer.toString(beats));
-//stuff that updates ui
-
                 }
             });
 
 
+            // Display the calculated FFT on the chart
             int size = rawFftData.size();
             for(int i=0; i<size; i++)
             {
@@ -459,14 +474,8 @@ mag[i] = val;
             }
 
             fftPlot.redraw();
-            currentWindow = 0;
         }
 
-        //gryFrame.get();
-        //Imgproc.cvtColor(currentFrame, currentFrame, Imgproc.COLOR_RGBA2GRAY);
-
-        //Imgproc.Canny(currentFrame,currentFrame,cannyThreshold/3,cannyThreshold );
         return currentFrame;
     }
-
 }
