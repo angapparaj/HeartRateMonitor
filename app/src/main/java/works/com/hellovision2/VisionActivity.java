@@ -427,10 +427,12 @@ private Button btnStart;
         runOnUiThread(new Runnable() {
             @Override
             public void run() {
-                circularProgressbar.setTitle("00");
-                circularProgressbar.setSubTitle("Detecting...");
-                //circularProgressbar.setProgress(currentWindow);
-                circularProgressbar.setProgress(((currentWindow*100)/(FFT_SIZE+NUM_TAPS)));
+                if(measuring) {
+                    circularProgressbar.setTitle("00");
+                    circularProgressbar.setSubTitle("Detecting...");
+                    //circularProgressbar.setProgress(currentWindow);
+                    circularProgressbar.setProgress(((currentWindow * 100) / (FFT_SIZE + NUM_TAPS)));
+                }
             }
         });
 
@@ -507,9 +509,10 @@ private Button btnStart;
             runOnUiThread(new Runnable() {
                 @Override
                 public void run() {
+
+                    PauseMeasurement();
                     circularProgressbar.setTitle(Integer.toString(beats));
                     circularProgressbar.setSubTitle("bpm");
-                    PauseMeasurement();
                 }
             });
 
