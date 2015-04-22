@@ -142,7 +142,6 @@ sampling frequency: 15 Hz
     private SimpleXYSeries smoothedDataSeries = null;
     private SimpleXYSeries demeanedDataSeries = null;
 
-    private TextView textviewBeats;
 private Button btnStart;
 
     int currentWindow = 0;
@@ -508,7 +507,6 @@ private Button btnStart;
             runOnUiThread(new Runnable() {
                 @Override
                 public void run() {
-                    textviewBeats.setText(Integer.toString(beats));
                     circularProgressbar.setTitle(Integer.toString(beats));
                     circularProgressbar.setSubTitle("bpm");
                     PauseMeasurement();
